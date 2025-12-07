@@ -94,3 +94,49 @@ if "trip_seconds" in df.columns:
         st.altair_chart(chart, use_container_width=True)
 else:
     st.info("El archivo no contiene 'trip_seconds'.")
+
+# --------------------------------------------
+# Distribución de trip_miles (p99)
+# --------------------------------------------
+st.subheader("Distribución de trip_miles (p99)")
+
+if "trip_miles" in df.columns:
+    # Asegurar tipo numérico (por si acaso)
+    df["trip_miles"] = pd.to_numeric(df["trip_miles"], errors="coerce")
+    series_miles = df["trip_miles"]
+
+    # Calcular p99 ignorando NaN
+    p99_miles = series_miles.quantile(0.99)
+
+    # Filtrar NaN y outliers
+    df_plot_miles = df[(series_miles.notna()) & (series_miles <= p99_miles)].copy()
+
+    # Muestrear máximo 5000 filas para Altair
+    n_miles = min(5000, len(df_plot_miles))
+    if n_miles == 0:
+        st.warning("No hay datos válidos para 'trip_miles' después del filtrado.")
+    else:
+        df_plot_miles_sample = df_plot_miles.sample(n=n_miles, random_state=42)
+
+        st.caption(
+            f"[trip_miles] Filas totales: {len(df_plot_miles)} · "
+            f"Filas graficadas (muestra): {n_miles}"
+        )
+
+        chart_miles = (
+            alt.Chart(df_plot_miles_sample)
+            .mark_bar()
+            .encode(
+                alt.X(
+                    "trip_miles:Q",
+                    bin=alt.Bin(maxbins=50),
+                    title="Distancia (millas)"
+                ),
+                alt.Y("count()", title="Frecuencia"),
+            )
+            .properties(height=350)
+        )
+
+        st.altair_chart(chart_miles, use_container_width=True)
+else:
+    st.info("El archivo no contiene 'trip_miles'.")
