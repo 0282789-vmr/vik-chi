@@ -4,7 +4,7 @@ import numpy as np
 import altair as alt
 from utils.gcs_loader import list_gcs_blobs, load_gcs_blob
 
-st.title("Analítica Descriptiva desde GCS (Altair)")
+st.title("Analítica Descriptiva desde GCS")
 
 # --------------------------------------------
 # Parámetros de conexión
