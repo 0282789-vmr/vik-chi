@@ -192,7 +192,7 @@ if cols_needed.issubset(df.columns):
         st.warning("No hay viajes con coordenadas completas para trazar líneas.")
     else:
         # Crear mapa centrado en Chicago
-        m = folium.Map(location=[41.8781, -87.6298], zoom_start=10)
+        m = folium.Map(location=[41.8781, -87.6298], zoom_start=11, tiles="CartoDB Positron")
 
         # Dibujar líneas pickup -> dropoff
         for _, row in df_map.iterrows():
