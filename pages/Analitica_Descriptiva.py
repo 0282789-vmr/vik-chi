@@ -4,11 +4,7 @@ import numpy as np
 import altair as alt
 from utils.gcs_loader import list_gcs_blobs, load_gcs_blob
 
-
-# Desactivar límite de 5000 filas de Altair
-alt.data_transformers.disable_max_rows()
-
-st.title("Analítica Descriptiva desde GCS")
+st.title("Analítica Descriptiva desde GCS (Chicago)")
 
 # --------------------------------------------
 # Parámetros de conexión
@@ -48,33 +44,29 @@ st.subheader("Vista previa")
 st.dataframe(df.head())
 
 # --------------------------------------------
-# Limpieza mínima
+# Limpieza mínima (por si acaso)
 # --------------------------------------------
+if "trip_start_timestamp" in df.columns:
+    df["trip_start_timestamp"] = pd.to_datetime(
+        df["trip_start_timestamp"], errors="coerce"
+    )
+
 if "trip_seconds" in df.columns:
     df["trip_seconds"] = pd.to_numeric(df["trip_seconds"], errors="coerce")
 
 # --------------------------------------------
-# Distribución de trip_seconds (p99)
+# Histograma Altair: trip_seconds (p99)
 # --------------------------------------------
 st.subheader("Distribución de trip_seconds (p99)")
 
 if "trip_seconds" in df.columns:
-    # trip_seconds ya es float64 según df.info()
-    # Pero por si acaso hubiera NaN:
-    series = df["trip_seconds"]
+    # Calcular p99 ignorando NaN
+    p99 = df["trip_seconds"].quantile(0.99)
 
-    # Mostrar info rápida en la app (para verificar)
-    st.write("dtype trip_seconds:", series.dtype)
-    st.write("Valores ejemplo:", series.head())
+    # Filtrar outliers
+    df_plot = df[df["trip_seconds"] <= p99]
 
-    # Calcular percentil 99 ignorando NaN
-    p99 = series.quantile(0.99)
-    st.write("p99 trip_seconds:", p99)
-
-    # Filtrar NaN y outliers
-    df_plot = df[(series.notna()) & (series <= p99)]
-    st.write("Filas totales:", len(df), " | Filas a graficar:", len(df_plot))
-
+    # Solo por seguridad, evitar gráfico vacío
     if df_plot.empty:
         st.warning("No hay datos válidos para 'trip_seconds' después del filtrado.")
     else:
@@ -84,7 +76,7 @@ if "trip_seconds" in df.columns:
             .encode(
                 alt.X(
                     "trip_seconds:Q",
-                    bin=alt.Bin(maxbins=50),
+                    bin=True,
                     title="Duración (segundos)"
                 ),
                 alt.Y("count()", title="Frecuencia"),
@@ -94,4 +86,4 @@ if "trip_seconds" in df.columns:
 
         st.altair_chart(chart, use_container_width=True)
 else:
-    st.info("El archivo no contiene la columna 'trip_seconds'.")
+    st.info("El archivo no contiene trip_seconds.")
