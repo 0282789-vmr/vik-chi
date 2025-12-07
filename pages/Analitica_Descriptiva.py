@@ -44,7 +44,7 @@ st.subheader("Vista previa")
 st.dataframe(df.head())
 
 # --------------------------------------------
-# Limpieza mínima (por si acaso)
+# Limpieza mínima
 # --------------------------------------------
 if "trip_start_timestamp" in df.columns:
     df["trip_start_timestamp"] = pd.to_datetime(
@@ -55,28 +55,35 @@ if "trip_seconds" in df.columns:
     df["trip_seconds"] = pd.to_numeric(df["trip_seconds"], errors="coerce")
 
 # --------------------------------------------
-# Histograma Altair: trip_seconds (p99)
+# Distribución de trip_seconds (p99)
 # --------------------------------------------
 st.subheader("Distribución de trip_seconds (p99)")
 
 if "trip_seconds" in df.columns:
+    series = df["trip_seconds"]
+
     # Calcular p99 ignorando NaN
-    p99 = df["trip_seconds"].quantile(0.99)
+    p99 = series.quantile(0.99)
 
-    # Filtrar outliers
-    df_plot = df[df["trip_seconds"] <= p99]
+    # Filtrar NaN y outliers
+    df_plot = df[(series.notna()) & (series <= p99)].copy()
 
-    # Solo por seguridad, evitar gráfico vacío
-    if df_plot.empty:
+    # Limitar a máximo 5000 filas para Altair
+    n = min(5000, len(df_plot))
+    if n == 0:
         st.warning("No hay datos válidos para 'trip_seconds' después del filtrado.")
     else:
+        df_plot_sample = df_plot.sample(n=n, random_state=42)
+
+        st.caption(f"Filas totales: {len(df_plot)} · Filas graficadas (muestra): {n}")
+
         chart = (
-            alt.Chart(df_plot)
+            alt.Chart(df_plot_sample)
             .mark_bar()
             .encode(
                 alt.X(
                     "trip_seconds:Q",
-                    bin=True,
+                    bin=alt.Bin(maxbins=50),
                     title="Duración (segundos)"
                 ),
                 alt.Y("count()", title="Frecuencia"),
@@ -86,4 +93,4 @@ if "trip_seconds" in df.columns:
 
         st.altair_chart(chart, use_container_width=True)
 else:
-    st.info("El archivo no contiene trip_seconds.")
+    st.info("El archivo no contiene 'trip_seconds'.")
