@@ -5,7 +5,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Dashboard – Analítica Descriptiva en la Nube (Cloud Run + GCS)")
+st.title("Dashboard – Analítica Descriptiva")
 
 st.markdown("""
 Bienvenido al dashboard en la nube desplegado con **Cloud Run**.
@@ -21,7 +21,7 @@ Este sistema permite:
 
 Usa el menú lateral para acceder a la sección:
 
-**1_Analitica_Descriptiva_GCS**
+**Analitica_Descriptiva**
 
 ---
 """)
