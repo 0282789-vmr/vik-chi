@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import altair as alt
 from utils.gcs_loader import list_gcs_blobs, load_gcs_blob
+import folium
+from streamlit_folium import st_folium
 
 st.title("Analítica Descriptiva desde GCS (Chicago)")
 
@@ -140,3 +142,80 @@ if "trip_miles" in df.columns:
         st.altair_chart(chart_miles, use_container_width=True)
 else:
     st.info("El archivo no contiene 'trip_miles'.")
+
+# --------------------------------------------------------------------
+# Mapa: 50 viajes debajo y 50 arriba de la media de trip_total
+# --------------------------------------------------------------------
+st.subheader("Rutas alrededor de la media de trip_total (mapa)")
+
+cols_needed = {
+    "trip_total",
+    "pickup_latitude", "pickup_longitude",
+    "dropoff_latitude", "dropoff_longitude",
+}
+
+if cols_needed.issubset(df.columns):
+
+    # Asegurar tipos numéricos
+    for col in cols_needed:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    media = df["trip_total"].mean()
+
+    # 50 más cercanos por debajo
+    df_below = (
+        df[df["trip_total"] < media]
+        .sort_values("trip_total", ascending=False)
+        .head(50)
+    )
+
+    # 50 más cercanos por arriba
+    df_above = (
+        df[df["trip_total"] >= media]
+        .sort_values("trip_total", ascending=True)
+        .head(50)
+    )
+
+    df_map = pd.concat([df_below, df_above], ignore_index=True)
+
+    # Eliminar filas sin coordenadas
+    df_map = df_map.dropna(
+        subset=[
+            "pickup_latitude", "pickup_longitude",
+            "dropoff_latitude", "dropoff_longitude",
+        ]
+    ).reset_index(drop=True)
+
+    st.caption(f"Viajes seleccionados tras limpieza: {len(df_map)}")
+
+    if df_map.empty:
+        st.warning("No hay viajes con coordenadas completas para trazar líneas.")
+    else:
+        # Crear mapa centrado en Chicago
+        m = folium.Map(location=[41.8781, -87.6298], zoom_start=10)
+
+        # Dibujar líneas pickup -> dropoff
+        for _, row in df_map.iterrows():
+            pickup = [row["pickup_latitude"], row["pickup_longitude"]]
+            dropoff = [row["dropoff_latitude"], row["dropoff_longitude"]]
+
+            color = "green" if row["trip_total"] > media else "red"
+
+            folium.PolyLine(
+                locations=[pickup, dropoff],
+                color=color,
+                weight=3,
+                opacity=0.6,
+            ).add_to(m)
+
+        # Renderizar mapa en streamlit
+        st_folium(m, width=800, height=500)
+
+else:
+    st.info(
+        "Faltan columnas para el mapa: "
+        "'trip_total', 'pickup_latitude', 'pickup_longitude', "
+        "'dropoff_latitude', 'dropoff_longitude'."
+    )
+
+
