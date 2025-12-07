@@ -48,6 +48,12 @@ st.subheader("Vista previa")
 st.dataframe(df.head())
 
 # --------------------------------------------
+# Limpieza mínima
+# --------------------------------------------
+if "trip_seconds" in df.columns:
+    df["trip_seconds"] = pd.to_numeric(df["trip_seconds"], errors="coerce")
+
+# --------------------------------------------
 # Distribución de trip_seconds (p99)
 # --------------------------------------------
 st.subheader("Distribución de trip_seconds (p99)")
