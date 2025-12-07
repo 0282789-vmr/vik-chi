@@ -59,30 +59,25 @@ if "trip_seconds" in df.columns:
 st.subheader("Distribución de trip_seconds (p99)")
 
 if "trip_seconds" in df.columns:
-    # Limpiar comas y asegurar tipo numérico
-    df["trip_seconds"] = (
-        df["trip_seconds"]
-        .astype(str)                # por si viene como object
-        .str.replace(",", "", regex=False)  # quitar separador de miles
-    )
-    df["trip_seconds"] = pd.to_numeric(df["trip_seconds"], errors="coerce")
+    # trip_seconds ya es float64 según df.info()
+    # Pero por si acaso hubiera NaN:
+    series = df["trip_seconds"]
 
-    # Mostrar tipo y algunos valores para debug
-    st.write("dtype trip_seconds:", df["trip_seconds"].dtype)
-    st.write("Ejemplo valores:", df["trip_seconds"].head())
+    # Mostrar info rápida en la app (para verificar)
+    st.write("dtype trip_seconds:", series.dtype)
+    st.write("Valores ejemplo:", series.head())
 
-    # Calcular percentil 99 (ignorando NaN)
-    p99 = df["trip_seconds"].quantile(0.99)
+    # Calcular percentil 99 ignorando NaN
+    p99 = series.quantile(0.99)
     st.write("p99 trip_seconds:", p99)
 
-    # Filtrar NaN y outliers por arriba del p99
-    df_plot = df[(df["trip_seconds"].notna()) & (df["trip_seconds"] <= p99)]
-    st.write("Filas a graficar:", len(df_plot))
+    # Filtrar NaN y outliers
+    df_plot = df[(series.notna()) & (series <= p99)]
+    st.write("Filas totales:", len(df), " | Filas a graficar:", len(df_plot))
 
     if df_plot.empty:
         st.warning("No hay datos válidos para 'trip_seconds' después del filtrado.")
     else:
-        # Histograma con Altair
         chart = (
             alt.Chart(df_plot)
             .mark_bar()
