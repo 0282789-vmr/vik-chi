@@ -3,8 +3,7 @@ import pandas as pd
 import numpy as np
 import altair as alt
 from utils.gcs_loader import list_gcs_blobs, load_gcs_blob
-import folium
-from streamlit_folium import st_folium
+import pydeck as pdk
 
 st.title("Analítica Descriptiva desde GCS (Chicago)")
 
@@ -143,79 +142,101 @@ if "trip_miles" in df.columns:
 else:
     st.info("El archivo no contiene 'trip_miles'.")
 
-# --------------------------------------------------------------------
-# Mapa: 50 viajes debajo y 50 arriba de la media de trip_total
-# --------------------------------------------------------------------
-st.subheader("Rutas alrededor de la media de trip_total (mapa)")
 
-cols_needed = {
+# ---------------------------------------------------------
+# Mapa PyDeck: rutas alrededor de la media de trip_total
+# ---------------------------------------------------------
+st.subheader("Rutas alrededor de la media de trip_total (PyDeck)")
+
+cols_needed = [
     "trip_total",
     "pickup_latitude", "pickup_longitude",
     "dropoff_latitude", "dropoff_longitude",
-}
+]
 
-if cols_needed.issubset(df.columns):
+# Verificamos que existan las columnas necesarias
+if set(cols_needed).issubset(df.columns):
 
-    # Asegurar tipos numéricos
+    # Aseguramos tipo numérico
     for col in cols_needed:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    media = df["trip_total"].mean()
-
-    # 50 más cercanos por debajo
-    df_below = (
-        df[df["trip_total"] < media]
-        .sort_values("trip_total", ascending=False)
-        .head(50)
-    )
-
-    # 50 más cercanos por arriba
-    df_above = (
-        df[df["trip_total"] >= media]
-        .sort_values("trip_total", ascending=True)
-        .head(50)
-    )
-
-    df_map = pd.concat([df_below, df_above], ignore_index=True)
-
-    # Eliminar filas sin coordenadas
-    df_map = df_map.dropna(
+    # Filtrar a filas con coordenadas completas
+    df_geo = df.dropna(
         subset=[
             "pickup_latitude", "pickup_longitude",
             "dropoff_latitude", "dropoff_longitude",
         ]
-    ).reset_index(drop=True)
+    ).copy()
 
-    st.caption(f"Viajes seleccionados tras limpieza: {len(df_map)}")
-
-    if df_map.empty:
-        st.warning("No hay viajes con coordenadas completas para trazar líneas.")
+    if df_geo.empty:
+        st.warning("No hay viajes con coordenadas completas para el mapa.")
     else:
-        # Crear mapa centrado en Chicago
-        m = folium.Map(location=[41.8781, -87.6298], zoom_start=11, tiles="CartoDB Positron")
+        # Media de trip_total usando solo viajes con coordenadas válidas
+        media = df_geo["trip_total"].mean()
 
-        # Dibujar líneas pickup -> dropoff
-        for _, row in df_map.iterrows():
-            pickup = [row["pickup_latitude"], row["pickup_longitude"]]
-            dropoff = [row["dropoff_latitude"], row["dropoff_longitude"]]
+        # 50 más cercanos por debajo de la media
+        df_below = (
+            df_geo[df_geo["trip_total"] < media]
+            .sort_values("trip_total", ascending=False)
+            .head(50)
+        )
 
-            color = "green" if row["trip_total"] > media else "red"
+        # 50 más cercanos por arriba de la media
+        df_above = (
+            df_geo[df_geo["trip_total"] >= media]
+            .sort_values("trip_total", ascending=True)
+            .head(50)
+        )
 
-            folium.PolyLine(
-                locations=[pickup, dropoff],
-                color=color,
-                weight=3,
-                opacity=0.6,
-            ).add_to(m)
+        df_map = pd.concat([df_below, df_above], ignore_index=True)
 
-        # Renderizar mapa en streamlit
-        st_folium(m, width=800, height=500)
+        st.caption(f"Viajes seleccionados para el mapa: {len(df_map)}")
 
+        if df_map.empty:
+            st.warning("No se encontraron suficientes viajes para graficar.")
+        else:
+            # Colores: rojo = arriba de la media, verde = abajo
+            df_map["color"] = df_map["trip_total"].apply(
+                lambda x: [255, 0, 0] if x > media else [0, 200, 0]
+            )
+
+            # Capa de arcos pickup -> dropoff
+            arc_layer = pdk.Layer(
+                "ArcLayer",
+                data=df_map,
+                get_source_position=["pickup_longitude", "pickup_latitude"],
+                get_target_position=["dropoff_longitude", "dropoff_latitude"],
+                get_source_color="color",
+                get_target_color="color",
+                auto_highlight=True,
+                width_scale=2,
+                get_width=2,
+            )
+
+            # Vista centrada en Chicago
+            view_state = pdk.ViewState(
+                latitude=41.8781,
+                longitude=-87.6298,
+                zoom=10,
+                pitch=0,
+                bearing=0,
+            )
+
+            deck = pdk.Deck(
+                layers=[arc_layer],
+                initial_view_state=view_state,
+                tooltip={
+                    "text": "trip_total: {trip_total}\n"
+                            "pickup: [{pickup_latitude}, {pickup_longitude}]\n"
+                            "dropoff: [{dropoff_latitude}, {dropoff_longitude}]"
+                },
+            )
+
+            st.pydeck_chart(deck)
 else:
     st.info(
         "Faltan columnas para el mapa: "
         "'trip_total', 'pickup_latitude', 'pickup_longitude', "
         "'dropoff_latitude', 'dropoff_longitude'."
     )
-
-
