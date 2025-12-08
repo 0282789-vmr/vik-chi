@@ -142,6 +142,46 @@ if "trip_miles" in df.columns:
 else:
     st.info("El archivo no contiene 'trip_miles'.")
 
+# ===============================================
+#  Sección: Media de trip_total destacada
+# ===============================================
+st.subheader("Promedio de tarifa (trip_total)")
+
+# Aseguramos que sea numérico
+df["trip_total"] = pd.to_numeric(df["trip_total"], errors="coerce")
+
+# Calculamos la media ignorando valores faltantes
+media_trip = df["trip_total"].mean()
+
+# Tarjeta visual de estilo destacado
+st.markdown(
+    f"""
+    <div style="
+        background-color:#f5f7ff;
+        padding:1.5rem 2rem;
+        border-radius:16px;
+        border:1px solid #e2e6f3;
+        margin-bottom:1.5rem;
+        width:100%;
+    ">
+        <p style="margin:0; font-size:15px; color:#333;">
+            El valor promedio de <strong>trip_total</strong> es:
+        </p>
+        <p style="
+            margin:0.2rem 0 0.4rem 0;
+            font-size:48px;
+            font-weight:700;
+            color:#0b7a29;
+        ">
+            ${media_trip:,.2f}
+        </p>
+        <p style="margin:0; font-size:13px; color:#555;">
+            Calculado con los registros del archivo seleccionado.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------
 # Mapa PyDeck: rutas alrededor de la media de trip_total
