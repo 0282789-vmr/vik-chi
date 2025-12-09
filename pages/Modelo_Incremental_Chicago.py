@@ -8,7 +8,7 @@ from river import linear_model, preprocessing, metrics
 
 
 # =========================================================
-# Página: Modelo incremental (River) - Chicago
+# Configuración de la página
 # =========================================================
 st.title("Modelo Incremental (River) – Viajes de Taxi en Chicago")
 
@@ -22,23 +22,24 @@ bucket_name = st.sidebar.text_input("Bucket de GCS", "0282789_bucket")
 prefix = st.sidebar.text_input("Prefijo", "chi_trips/")
 
 limite_muestras = st.sidebar.number_input(
-    "Límite total de muestras para entrenar",
-    min_value=1000,
+    "Máximo de muestras POR archivo",
+    min_value=1_000,
     max_value=100_000,
-    value=20_000,
-    step=1000,
+    value=10_000,
+    step=1_000,
 )
 
 chunksize = st.sidebar.number_input(
     "Tamaño de chunk (filas por lectura)",
     min_value=100,
-    max_value=5000,
-    value=1000,
+    max_value=5_000,
+    value=1_000,
     step=100,
 )
 
 reiniciar_modelo = st.sidebar.checkbox(
-    "Reiniciar modelo desde cero en esta ejecución", value=True
+    "Reiniciar modelo desde cero en esta ejecución",
+    value=True,
 )
 
 
@@ -63,18 +64,14 @@ def _extract_x_chi(row):
     - pickup/dropoff_community_area
     - hour, day, month, weekday
     """
-    # Distancia
     miles = row.get("trip_miles", 0)
     miles = float(pd.to_numeric(miles, errors="coerce")) if pd.notna(miles) else 0.0
 
-    # Duración
     secs = row.get("trip_seconds", 0)
     secs = float(pd.to_numeric(secs, errors="coerce")) if pd.notna(secs) else 0.0
 
-    # Timestamp → variables temporales
     dt, hour, day, month, weekday = _parse_time_fields_chi(row)
 
-    # Community areas
     pca = row.get("pickup_community_area", 0)
     pca = float(pd.to_numeric(pca, errors="coerce")) if pd.notna(pca) else 0.0
 
@@ -107,12 +104,12 @@ def _valid_target_chi(v):
 
 
 # =========================================================
-# 3. Entrenamiento incremental desde GCS (Chicago)
+# 3. Entrenamiento incremental desde GCS (límite POR archivo)
 # =========================================================
 def train_incremental_from_bucket_chicago(
     bucket_name: str,
     prefix: str,
-    limite: int,
+    limite_por_archivo: int,      # máximo de muestras por archivo
     chunksize: int,
     model=None,
     metric=None,
@@ -122,27 +119,25 @@ def train_incremental_from_bucket_chicago(
     Entrena un modelo de regresión lineal incremental (River) usando
     los CSV de Chicago en GCS.
 
-    - bucket_name: nombre del bucket de GCS
-    - prefix: prefijo de los archivos (ej. 'chi_trips/')
-    - limite: número máximo total de muestras a usar
-    - chunksize: tamaño de cada chunk leído por pandas
-    - model, metric: si se pasan, continúa entrenando; si no, los crea
-    - logger: función para imprimir mensajes en Streamlit
+    - limite_por_archivo: máximo de muestras **por archivo**.
+      Se recorren todos los archivos del prefijo.
     """
+
     if logger is None:
         logger = print
 
-    # Si no se pasa un modelo, se inicializa desde cero
+    # Inicializar modelo/ métrica si no vienen de fuera
     if model is None or metric is None:
         model = preprocessing.StandardScaler() | linear_model.LinearRegression()
         metric = metrics.R2()
-        history = []
-    else:
-        history = []
+    history = []
 
     client = storage.Client()
     bucket = client.bucket(bucket_name)
-    blobs = list(bucket.list_blobs(prefix=prefix))
+
+    # Listar blobs y quedarnos solo con los .csv
+    all_blobs = list(bucket.list_blobs(prefix=prefix))
+    blobs = [b for b in all_blobs if b.name.endswith(".csv")]
 
     expected_cols = {
         "trip_miles",
@@ -155,13 +150,11 @@ def train_incremental_from_bucket_chicago(
 
     logger(f"📦 Archivos encontrados en {bucket_name}/{prefix}: {len(blobs)}")
 
-    total_count = 0
-
     for i, blob in enumerate(blobs, start=1):
-        if total_count >= limite:
-            break
-
         logger(f"\nArchivo {i}/{len(blobs)} — {blob.name}")
+
+        # contador POR ARCHIVO (como en tu código de NYC)
+        count = 0
 
         content = blob.download_as_bytes()
         buffer = io.BytesIO(content)
@@ -169,15 +162,13 @@ def train_incremental_from_bucket_chicago(
         try:
             for chunk in pd.read_csv(buffer, chunksize=chunksize, low_memory=False):
 
-                if total_count >= limite:
+                if count >= limite_por_archivo:
                     break
 
-                # Validar columnas mínimas
                 if not expected_cols.issubset(chunk.columns):
                     logger("   → Saltando (faltan columnas esperadas)")
                     break
 
-                # Conversión numérica
                 for col in [
                     "trip_miles",
                     "trip_seconds",
@@ -187,13 +178,11 @@ def train_incremental_from_bucket_chicago(
                 ]:
                     chunk[col] = pd.to_numeric(chunk[col], errors="coerce")
 
-                # Limpiar NaN e infinitos
                 chunk = chunk.replace([np.inf, -np.inf], np.nan)
                 chunk = chunk.dropna(
                     subset=["trip_miles", "trip_seconds", "trip_total"]
                 )
 
-                # Filtros razonables
                 chunk = chunk[
                     chunk["trip_total"].between(2, 200)
                     & chunk["trip_miles"].between(0.1, 50)
@@ -203,12 +192,10 @@ def train_incremental_from_bucket_chicago(
                 if chunk.empty:
                     continue
 
-                # Shuffle interno
                 chunk = chunk.sample(frac=1.0, random_state=42)
 
-                # Entrenamiento online
                 for _, row in chunk.iterrows():
-                    if total_count >= limite:
+                    if count >= limite_por_archivo:
                         break
 
                     y = _valid_target_chi(row.get("trip_total"))
@@ -221,10 +208,10 @@ def train_incremental_from_bucket_chicago(
                     model.learn_one(x, y)
                     metric.update(y, y_pred)
 
-                    total_count += 1
+                    count += 1
 
-                    if total_count % 500 == 0:
-                        logger(f"   → {total_count} muestras (R²={metric.get():.3f})")
+                    if count % 500 == 0:
+                        logger(f"   → {count} muestras (R²={metric.get():.3f})")
 
         except Exception as e:
             logger(f"Error procesando {blob.name}: {e}")
@@ -234,14 +221,14 @@ def train_incremental_from_bucket_chicago(
         history.append(metric.get())
 
     logger(
-        f"\n✅ Entrenamiento finalizado con {total_count} muestras. "
-        f"R² final = {metric.get():.3f}"
+        f"\n✅ Entrenamiento finalizado. Se usaron hasta {limite_por_archivo} "
+        f"muestras por archivo. R² final = {metric.get():.3f}"
     )
     return model, history, metric
 
 
 # =========================================================
-# 4. Interfaz en Streamlit
+# 4. Interfaz en Streamlit (botón, logs, gráfico)
 # =========================================================
 if st.button("Entrenar modelo incremental"):
     log_area = st.empty()
@@ -253,13 +240,11 @@ if st.button("Entrenar modelo incremental"):
     def st_logger(msg: str):
         """Acumula logs y los muestra en Streamlit."""
         st.session_state["log_lines_chi"].append(str(msg))
-        # Mostrar solo las últimas 40 líneas para no saturar
         ultimas = st.session_state["log_lines_chi"][-40:]
         log_area.text("\n".join(ultimas))
 
     with st.spinner("Entrenando modelo incremental con River..."):
-        # Si queremos reusar el modelo entre ejecuciones,
-        # podemos guardarlo en session_state
+        # Reusar o reiniciar modelo
         if (
             "river_model_chi" not in st.session_state
             or "river_metric_chi" not in st.session_state
@@ -267,7 +252,6 @@ if st.button("Entrenar modelo incremental"):
         ):
             current_model = None
             current_metric = None
-            # también reiniciamos logs si se reinicia modelo
             st.session_state["log_lines_chi"] = []
         else:
             current_model = st.session_state["river_model_chi"]
@@ -276,7 +260,7 @@ if st.button("Entrenar modelo incremental"):
         model, history, metric = train_incremental_from_bucket_chicago(
             bucket_name=bucket_name,
             prefix=prefix,
-            limite=limite_muestras,
+            limite_por_archivo=limite_muestras,  # 👈 aquí usas 10k por archivo
             chunksize=chunksize,
             model=current_model,
             metric=current_metric,
@@ -288,7 +272,6 @@ if st.button("Entrenar modelo incremental"):
 
     st.success(f"Entrenamiento completo. R² final = {metric.get():.3f}")
 
-    # Mostrar historial de R² si hay datos
     if history:
         st.subheader("Evolución de R² por archivo procesado")
         hist_df = pd.DataFrame({"R2": history})
