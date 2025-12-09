@@ -245,14 +245,17 @@ def train_incremental_from_bucket_chicago(
 # =========================================================
 if st.button("Entrenar modelo incremental"):
     log_area = st.empty()
-    log_lines = []
+
+    # Inicializamos lista de logs en session_state
+    if "log_lines_chi" not in st.session_state:
+        st.session_state["log_lines_chi"] = []
 
     def st_logger(msg: str):
         """Acumula logs y los muestra en Streamlit."""
-        nonlocal log_lines
-        log_lines.append(str(msg))
+        st.session_state["log_lines_chi"].append(str(msg))
         # Mostrar solo las últimas 40 líneas para no saturar
-        log_area.text("\n".join(log_lines[-40:]))
+        ultimas = st.session_state["log_lines_chi"][-40:]
+        log_area.text("\n".join(ultimas))
 
     with st.spinner("Entrenando modelo incremental con River..."):
         # Si queremos reusar el modelo entre ejecuciones,
@@ -264,6 +267,8 @@ if st.button("Entrenar modelo incremental"):
         ):
             current_model = None
             current_metric = None
+            # también reiniciamos logs si se reinicia modelo
+            st.session_state["log_lines_chi"] = []
         else:
             current_model = st.session_state["river_model_chi"]
             current_metric = st.session_state["river_metric_chi"]
@@ -289,4 +294,7 @@ if st.button("Entrenar modelo incremental"):
         hist_df = pd.DataFrame({"R2": history})
         st.line_chart(hist_df)
 else:
-    st.info("Configura los parámetros en la barra lateral y pulsa **Entrenar modelo incremental**.")
+    st.info(
+        "Configura los parámetros en la barra lateral y pulsa "
+        "**Entrenar modelo incremental**."
+    )
