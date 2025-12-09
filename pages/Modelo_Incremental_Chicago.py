@@ -4,7 +4,8 @@ import pandas as pd
 import streamlit as st
 
 from google.cloud import storage
-from river import linear_model, preprocessing, compose, metrics
+from river import linear_model, preprocessing, metrics
+
 
 # =========================================================
 # Configuración de la página
@@ -84,13 +85,17 @@ def _parse_time_fields_chi(row):
         dt = pd.to_datetime(row["trip_start_timestamp"], errors="coerce", utc=False)
         if pd.notna(dt):
             return dt, int(dt.hour), int(dt.day), int(dt.month), int(dt.weekday())
+    # fallback
     return None, 0, 1, 1, 0
 
 
 def _extract_x_chi(row):
     """
-    Construye el vector de características X para Chicago,
-    ahora incluyendo payment_type como categórica.
+    Construye el vector de características X para Chicago.
+
+    - trip_miles, trip_seconds
+    - pickup/dropoff_community_area
+    - hour, day, month, weekday
     """
     miles = row.get("trip_miles", 0)
     miles = float(pd.to_numeric(miles, errors="coerce")) if pd.notna(miles) else 0.0
@@ -106,10 +111,6 @@ def _extract_x_chi(row):
     dca = row.get("dropoff_community_area", 0)
     dca = float(pd.to_numeric(dca, errors="coerce")) if pd.notna(dca) else 0.0
 
-    ### 🔹 NUEVO: variable categórica method_payment
-    payment = row.get("payment_type", "UNKNOWN")
-    payment = str(payment) if pd.notna(payment) else "UNKNOWN"
-
     return {
         "trip_miles": miles,
         "log_miles": float(np.log1p(max(miles, 0.0))),
@@ -121,11 +122,11 @@ def _extract_x_chi(row):
         "day": float(day),
         "month": float(month),
         "weekday": float(weekday),
-        "payment_type": payment,  ### 🔹 NUEVO
     }
 
 
 def _valid_target_chi(v):
+    """Limpia y valida trip_total como objetivo."""
     y = pd.to_numeric(v, errors="coerce")
     if pd.isna(y):
         return None
@@ -137,35 +138,39 @@ def _valid_target_chi(v):
 
 # =========================================================
 # 3. Entrenamiento incremental desde GCS
+#    (límite POR archivo + número de archivos seleccionable)
 # =========================================================
 def train_incremental_from_bucket_chicago(
     bucket_name,
     prefix,
-    limite_por_archivo,
+    limite_por_archivo,   # máximo de muestras por archivo
     chunksize,
-    max_files=None,
+    max_files=None,       # cuántos archivos CSV usar (None = todos)
     model=None,
     metric=None,
     logger=None,
 ):
+    """
+    Entrena un modelo de regresión lineal incremental (River) usando
+    los CSV de Chicago en GCS.
+
+    - limite_por_archivo: máximo de muestras **por archivo**.
+    - max_files: cuántos archivos CSV usar (None = todos).
+    """
+
     if logger is None:
         logger = print
 
-    ### 🔹 Nuevo pipeline si no existe:
+    # Inicializar modelo/ métrica si no vienen de fuera
     if model is None or metric is None:
-        model = (
-            compose.SelectType(str)  ### detecta strings como payment_type
-            | preprocessing.OneHotEncoder()  ### crea categorías dinámicas
-            | preprocessing.StandardScaler()  ### escala numéricos
-            | linear_model.LinearRegression()  ### regresión incremental
-        )
+        model = preprocessing.StandardScaler() | linear_model.LinearRegression()
         metric = metrics.R2()
-
     history = []
 
     client = storage.Client()
     bucket = client.bucket(bucket_name)
 
+    # Listar blobs y quedarnos solo con los .csv
     all_blobs = list(bucket.list_blobs(prefix=prefix))
     csv_blobs = [b for b in all_blobs if b.name.endswith(".csv")]
 
@@ -181,7 +186,6 @@ def train_incremental_from_bucket_chicago(
         "trip_start_timestamp",
         "pickup_community_area",
         "dropoff_community_area",
-        "payment_type",  ### 🔹 aseguramos que esté
     }
 
     logger(
@@ -191,6 +195,8 @@ def train_incremental_from_bucket_chicago(
 
     for i, blob in enumerate(blobs, start=1):
         logger(f"\nArchivo {i}/{len(blobs)} — {blob.name}")
+
+        # contador POR ARCHIVO
         count = 0
 
         content = blob.download_as_bytes()
@@ -266,7 +272,7 @@ def train_incremental_from_bucket_chicago(
 
 
 # =========================================================
-# 4. Interfaz Streamlit igual que antes (sin cambios)
+# 4. Interfaz en Streamlit (botón, logs, gráfico persistente)
 # =========================================================
 if st.button("Entrenar modelo incremental"):
     if total_archivos == 0:
@@ -274,16 +280,18 @@ if st.button("Entrenar modelo incremental"):
     else:
         log_area = st.empty()
 
+        # Inicializamos lista de logs en session_state
         if "log_lines_chi" not in st.session_state:
             st.session_state["log_lines_chi"] = []
 
         def st_logger(msg: str):
+            """Acumula logs y los muestra en Streamlit."""
             st.session_state["log_lines_chi"].append(str(msg))
             ultimas = st.session_state["log_lines_chi"][-40:]
             log_area.text("\n".join(ultimas))
 
         with st.spinner("Entrenando modelo incremental con River..."):
-
+            # Reusar o reiniciar modelo
             if (
                 "river_model_chi" not in st.session_state
                 or "river_metric_chi" not in st.session_state
@@ -307,6 +315,7 @@ if st.button("Entrenar modelo incremental"):
                 logger=st_logger,
             )
 
+            # Guardar modelo y métricas en session_state (para mostrarlas después)
             st.session_state["river_model_chi"] = model
             st.session_state["river_metric_chi"] = metric
             st.session_state["chi_history"] = history
@@ -318,6 +327,7 @@ else:
         "**Entrenar modelo incremental**."
     )
 
+# ===== Mostrar SIEMPRE el resultado más reciente, si existe =====
 if "chi_r2_final" in st.session_state:
     st.success(
         f"Entrenamiento completo. R² final = "
