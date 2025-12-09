@@ -22,6 +22,7 @@ Este sistema permite:
 Usa el menú lateral para acceder a la sección:
 
 **Analitica_Descriptiva**
+**Modelo_Incremental_Chicago**
 
 ---
 """)
