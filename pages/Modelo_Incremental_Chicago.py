@@ -21,6 +21,24 @@ st.sidebar.header("Configuración")
 bucket_name = st.sidebar.text_input("Bucket de GCS", "0282789_bucket")
 prefix = st.sidebar.text_input("Prefijo", "chi_trips/")
 
+# --- Detectar cuántos CSV hay realmente en el bucket/prefijo ---
+total_archivos = 0
+try:
+    client_sidebar = storage.Client()
+    bucket_sidebar = client_sidebar.bucket(bucket_name)
+    blobs_sidebar = list(bucket_sidebar.list_blobs(prefix=prefix))
+    csv_blobs_sidebar = [b for b in blobs_sidebar if b.name.endswith(".csv")]
+    total_archivos = len(csv_blobs_sidebar)
+except Exception as e:
+    st.sidebar.warning(f"No se pudieron listar blobs: {e}")
+    csv_blobs_sidebar = []
+
+if total_archivos == 0:
+    st.sidebar.warning("No se encontraron archivos .csv con ese prefijo.")
+else:
+    st.sidebar.write(f"📦 Archivos CSV detectados: {total_archivos}")
+
+# --- Máximo de muestras por archivo ---
 limite_muestras = st.sidebar.number_input(
     "Máximo de muestras POR archivo",
     min_value=1_000,
@@ -29,6 +47,7 @@ limite_muestras = st.sidebar.number_input(
     step=1_000,
 )
 
+# --- Tamaño del chunk ---
 chunksize = st.sidebar.number_input(
     "Tamaño de chunk (filas por lectura)",
     min_value=100,
@@ -36,6 +55,20 @@ chunksize = st.sidebar.number_input(
     value=1_000,
     step=100,
 )
+
+# --- Número de archivos a usar (dinámico) ---
+if total_archivos > 0:
+    num_archivos = st.sidebar.number_input(
+        "Número de archivos a usar",
+        min_value=1,
+        max_value=total_archivos,
+        value=min(10, total_archivos),
+        step=1,
+    )
+    max_files = int(num_archivos)
+else:
+    num_archivos = None
+    max_files = None
 
 reiniciar_modelo = st.sidebar.checkbox(
     "Reiniciar modelo desde cero en esta ejecución",
@@ -104,13 +137,15 @@ def _valid_target_chi(v):
 
 
 # =========================================================
-# 3. Entrenamiento incremental desde GCS (límite POR archivo)
+# 3. Entrenamiento incremental desde GCS
+#    (límite POR archivo + número de archivos seleccionable)
 # =========================================================
 def train_incremental_from_bucket_chicago(
-    bucket_name: str,
-    prefix: str,
-    limite_por_archivo: int,      # máximo de muestras por archivo
-    chunksize: int,
+    bucket_name,
+    prefix,
+    limite_por_archivo,   # máximo de muestras por archivo
+    chunksize,
+    max_files=None,       # cuántos archivos CSV usar (None = todos)
     model=None,
     metric=None,
     logger=None,
@@ -120,7 +155,7 @@ def train_incremental_from_bucket_chicago(
     los CSV de Chicago en GCS.
 
     - limite_por_archivo: máximo de muestras **por archivo**.
-      Se recorren todos los archivos del prefijo.
+    - max_files: cuántos archivos CSV usar (None = todos).
     """
 
     if logger is None:
@@ -137,7 +172,12 @@ def train_incremental_from_bucket_chicago(
 
     # Listar blobs y quedarnos solo con los .csv
     all_blobs = list(bucket.list_blobs(prefix=prefix))
-    blobs = [b for b in all_blobs if b.name.endswith(".csv")]
+    csv_blobs = [b for b in all_blobs if b.name.endswith(".csv")]
+
+    if max_files is not None:
+        blobs = csv_blobs[:max_files]
+    else:
+        blobs = csv_blobs
 
     expected_cols = {
         "trip_miles",
@@ -148,12 +188,15 @@ def train_incremental_from_bucket_chicago(
         "dropoff_community_area",
     }
 
-    logger(f"📦 Archivos encontrados en {bucket_name}/{prefix}: {len(blobs)}")
+    logger(
+        f"📦 Archivos CSV a procesar en {bucket_name}/{prefix}: "
+        f"{len(blobs)} (de {len(csv_blobs)} disponibles)"
+    )
 
     for i, blob in enumerate(blobs, start=1):
         logger(f"\nArchivo {i}/{len(blobs)} — {blob.name}")
 
-        # contador POR ARCHIVO (como en tu código de NYC)
+        # contador POR ARCHIVO
         count = 0
 
         content = blob.download_as_bytes()
@@ -221,8 +264,9 @@ def train_incremental_from_bucket_chicago(
         history.append(metric.get())
 
     logger(
-        f"\n✅ Entrenamiento finalizado. Se usaron hasta {limite_por_archivo} "
-        f"muestras por archivo. R² final = {metric.get():.3f}"
+        f"\n✅ Entrenamiento finalizado. "
+        f"Se usaron hasta {limite_por_archivo} muestras por archivo. "
+        f"R² final = {metric.get():.3f}"
     )
     return model, history, metric
 
@@ -231,51 +275,55 @@ def train_incremental_from_bucket_chicago(
 # 4. Interfaz en Streamlit (botón, logs, gráfico)
 # =========================================================
 if st.button("Entrenar modelo incremental"):
-    log_area = st.empty()
+    if total_archivos == 0:
+        st.error("No hay archivos .csv para procesar con el prefijo indicado.")
+    else:
+        log_area = st.empty()
 
-    # Inicializamos lista de logs en session_state
-    if "log_lines_chi" not in st.session_state:
-        st.session_state["log_lines_chi"] = []
-
-    def st_logger(msg: str):
-        """Acumula logs y los muestra en Streamlit."""
-        st.session_state["log_lines_chi"].append(str(msg))
-        ultimas = st.session_state["log_lines_chi"][-40:]
-        log_area.text("\n".join(ultimas))
-
-    with st.spinner("Entrenando modelo incremental con River..."):
-        # Reusar o reiniciar modelo
-        if (
-            "river_model_chi" not in st.session_state
-            or "river_metric_chi" not in st.session_state
-            or reiniciar_modelo
-        ):
-            current_model = None
-            current_metric = None
+        # Inicializamos lista de logs en session_state
+        if "log_lines_chi" not in st.session_state:
             st.session_state["log_lines_chi"] = []
-        else:
-            current_model = st.session_state["river_model_chi"]
-            current_metric = st.session_state["river_metric_chi"]
 
-        model, history, metric = train_incremental_from_bucket_chicago(
-            bucket_name=bucket_name,
-            prefix=prefix,
-            limite_por_archivo=limite_muestras,  # 👈 aquí usas 10k por archivo
-            chunksize=chunksize,
-            model=current_model,
-            metric=current_metric,
-            logger=st_logger,
-        )
+        def st_logger(msg: str):
+            """Acumula logs y los muestra en Streamlit."""
+            st.session_state["log_lines_chi"].append(str(msg))
+            ultimas = st.session_state["log_lines_chi"][-40:]
+            log_area.text("\n".join(ultimas))
 
-        st.session_state["river_model_chi"] = model
-        st.session_state["river_metric_chi"] = metric
+        with st.spinner("Entrenando modelo incremental con River..."):
+            # Reusar o reiniciar modelo
+            if (
+                "river_model_chi" not in st.session_state
+                or "river_metric_chi" not in st.session_state
+                or reiniciar_modelo
+            ):
+                current_model = None
+                current_metric = None
+                st.session_state["log_lines_chi"] = []
+            else:
+                current_model = st.session_state["river_model_chi"]
+                current_metric = st.session_state["river_metric_chi"]
 
-    st.success(f"Entrenamiento completo. R² final = {metric.get():.3f}")
+            model, history, metric = train_incremental_from_bucket_chicago(
+                bucket_name=bucket_name,
+                prefix=prefix,
+                limite_por_archivo=limite_muestras,
+                chunksize=chunksize,
+                max_files=max_files,   # ← número de archivos a usar
+                model=current_model,
+                metric=current_metric,
+                logger=st_logger,
+            )
 
-    if history:
-        st.subheader("Evolución de R² por archivo procesado")
-        hist_df = pd.DataFrame({"R2": history})
-        st.line_chart(hist_df)
+            st.session_state["river_model_chi"] = model
+            st.session_state["river_metric_chi"] = metric
+
+        st.success(f"Entrenamiento completo. R² final = {metric.get():.3f}")
+
+        if history:
+            st.subheader("Evolución de R² por archivo procesado")
+            hist_df = pd.DataFrame({"R2": history})
+            st.line_chart(hist_df)
 else:
     st.info(
         "Configura los parámetros en la barra lateral y pulsa "
