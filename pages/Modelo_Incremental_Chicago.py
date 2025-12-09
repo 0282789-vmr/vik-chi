@@ -23,6 +23,7 @@ prefix = st.sidebar.text_input("Prefijo", "chi_trips/")
 
 # --- Detectar cuántos CSV hay realmente en el bucket/prefijo ---
 total_archivos = 0
+csv_blobs_sidebar = []
 try:
     client_sidebar = storage.Client()
     bucket_sidebar = client_sidebar.bucket(bucket_name)
@@ -31,7 +32,6 @@ try:
     total_archivos = len(csv_blobs_sidebar)
 except Exception as e:
     st.sidebar.warning(f"No se pudieron listar blobs: {e}")
-    csv_blobs_sidebar = []
 
 if total_archivos == 0:
     st.sidebar.warning("No se encontraron archivos .csv con ese prefijo.")
@@ -272,7 +272,7 @@ def train_incremental_from_bucket_chicago(
 
 
 # =========================================================
-# 4. Interfaz en Streamlit (botón, logs, gráfico)
+# 4. Interfaz en Streamlit (botón, logs, gráfico persistente)
 # =========================================================
 if st.button("Entrenar modelo incremental"):
     if total_archivos == 0:
@@ -309,23 +309,33 @@ if st.button("Entrenar modelo incremental"):
                 prefix=prefix,
                 limite_por_archivo=limite_muestras,
                 chunksize=chunksize,
-                max_files=max_files,   # ← número de archivos a usar
+                max_files=max_files,
                 model=current_model,
                 metric=current_metric,
                 logger=st_logger,
             )
 
+            # Guardar modelo y métricas en session_state (para mostrarlas después)
             st.session_state["river_model_chi"] = model
             st.session_state["river_metric_chi"] = metric
+            st.session_state["chi_history"] = history
+            st.session_state["chi_r2_final"] = float(metric.get())
 
-        st.success(f"Entrenamiento completo. R² final = {metric.get():.3f}")
-
-        if history:
-            st.subheader("Evolución de R² por archivo procesado")
-            hist_df = pd.DataFrame({"R2": history})
-            st.line_chart(hist_df)
 else:
     st.info(
         "Configura los parámetros en la barra lateral y pulsa "
         "**Entrenar modelo incremental**."
     )
+
+# ===== Mostrar SIEMPRE el resultado más reciente, si existe =====
+if "chi_r2_final" in st.session_state:
+    st.success(
+        f"Entrenamiento completo. R² final = "
+        f"{st.session_state['chi_r2_final']:.3f}"
+    )
+
+    history = st.session_state.get("chi_history", [])
+    if history:
+        st.subheader("Evolución de R² por archivo procesado")
+        hist_df = pd.DataFrame({"R2": history})
+        st.line_chart(hist_df)
