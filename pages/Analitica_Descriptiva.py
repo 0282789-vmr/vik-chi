@@ -374,9 +374,11 @@ else:
         corr_long = corr_matrix.reset_index().melt("index")
         corr_long.columns = ["var1", "var2", "corr"]
 
-        # 7) Graficar heatmap con Altair
+         # 7) Graficar heatmap con Altair (con número dentro de cada celda)
+        base = alt.Chart(corr_long)
+
         heatmap = (
-            alt.Chart(corr_long)
+            base
             .mark_rect()
             .encode(
                 x=alt.X("var1:N", title="Variable"),
@@ -384,18 +386,29 @@ else:
                 color=alt.Color(
                     "corr:Q",
                     scale=alt.Scale(scheme="redblue"),
+                    title="Correlación",
                 ),
-                tooltip=[
-                    alt.Tooltip("var1:N", title="Variable 1"),
-                    alt.Tooltip("var2:N", title="Variable 2"),
-                    alt.Tooltip("corr:Q", title="Correlación", format=".2f"),
-                ],
             )
+        )
+
+        # Capa de texto con el valor de correlación
+        text = (
+            base
+            .mark_text(size=12)
+            .encode(
+                x="var1:N",
+                y="var2:N",
+                text=alt.Text("corr:Q", format=".2f"),
+                color=alt.value("black"),
+            )
+        )
+
+        chart_corr = (
+            (heatmap + text)
             .properties(
-                title="Matriz de correlación entre predictores y trip_total",
+                #title="Matriz de correlación entre predictores y trip_total",
                 height=450,
             )
         )
 
-        st.altair_chart(heatmap, use_container_width=True)
-
+        st.altair_chart(chart_corr, use_container_width=True)
