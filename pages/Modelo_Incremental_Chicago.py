@@ -10,7 +10,7 @@ from river import linear_model, preprocessing, metrics
 # =========================================================
 # Configuración de la página
 # =========================================================
-st.title("Modelo Incremental (River) – Viajes de Taxi en Chicago")
+st.title("Modelo Incremental  – Viajes en Taxi-Chicago")
 
 
 # =========================================================
@@ -77,7 +77,7 @@ reiniciar_modelo = st.sidebar.checkbox(
 
 
 # =========================================================
-# 2. Funciones auxiliares (versión Chicago)
+# 2. Funciones auxiliares
 # =========================================================
 def _parse_time_fields_chi(row):
     """Devuelve (timestamp, hour, day, month, weekday) a partir de trip_start_timestamp."""
