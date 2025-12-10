@@ -76,7 +76,7 @@ if "trip_seconds" in df.columns:
     else:
         df_plot_sample = df_plot.sample(n=n, random_state=42)
 
-        st.caption(f"Filas totales: {len(df_plot)} · Filas graficadas (muestra): {n}")
+        #st.caption(f"Filas totales: {len(df_plot)} · Filas graficadas (muestra): {n}")
 
         chart = (
             alt.Chart(df_plot_sample)
@@ -119,10 +119,10 @@ if "trip_miles" in df.columns:
     else:
         df_plot_miles_sample = df_plot_miles.sample(n=n_miles, random_state=42)
 
-        st.caption(
-            f"[trip_miles] Filas totales: {len(df_plot_miles)} · "
-            f"Filas graficadas (muestra): {n_miles}"
-        )
+        #st.caption(
+            #f"[trip_miles] Filas totales: {len(df_plot_miles)} · "
+            #f"Filas graficadas (muestra): {n_miles}"
+        #)
 
         chart_miles = (
             alt.Chart(df_plot_miles_sample)
