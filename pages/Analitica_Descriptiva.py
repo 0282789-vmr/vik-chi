@@ -63,7 +63,7 @@ st.subheader("Distribución de trip_seconds (p99)")
 if "trip_seconds" in df.columns:
     series = df["trip_seconds"]
 
-    # Calcular p99 ignorando NaN
+    # Calcular p99 ignorando 
     p99 = series.quantile(0.99)
 
     # Filtrar NaN y outliers
@@ -106,7 +106,7 @@ if "trip_miles" in df.columns:
     df["trip_miles"] = pd.to_numeric(df["trip_miles"], errors="coerce")
     series_miles = df["trip_miles"]
 
-    # Calcular p99 ignorando NaN
+    # Calcular p99 ignorando 
     p99_miles = series_miles.quantile(0.99)
 
     # Filtrar NaN y outliers
@@ -168,7 +168,7 @@ if "payment_type" in df.columns:
         "unknown": "UNKNOWN",
     }
 
-    # Aplicar mapping manteniendo el valor original cuando no esté en el diccionario
+    # Aplicar mapping 
     s_norm = s_lower.map(mapping).fillna(s)
 
     # 3) Agrupar: una fila por categoría
@@ -361,7 +361,7 @@ cols_corr = [c for c in cols_corr if c in df.columns]
 if len(cols_corr) < 2:
     st.info("No hay suficientes variables numéricas para calcular la correlación.")
 else:
-    # 4) Construir dataframe numérico y eliminar filas con NaN
+    # 4) Construir dataframe numérico 
     df_corr = df[cols_corr].dropna().copy()
 
     if df_corr.empty:
@@ -374,7 +374,7 @@ else:
         corr_long = corr_matrix.reset_index().melt("index")
         corr_long.columns = ["var1", "var2", "corr"]
 
-         # 7) Graficar heatmap con Altair (con número dentro de cada celda)
+         # 7) Graficar heatmap con Altair 
         base = alt.Chart(corr_long)
 
         heatmap = (
