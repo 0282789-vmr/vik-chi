@@ -142,6 +142,40 @@ if "trip_miles" in df.columns:
 else:
     st.info("El archivo no contiene 'trip_miles'.")
 
+# --------------------------------------------
+# Distribución de payment_type
+# --------------------------------------------
+st.subheader("Distribución de tipos de pago")
+
+if "payment_type" in df.columns:
+    # Rellenar vacíos como "UNKNOWN" y convertir a string
+    df["payment_type"] = df["payment_type"].astype(str)
+    df["payment_type"] = df["payment_type"].replace(
+        {"nan": "UNKNOWN", "": "UNKNOWN"}
+    )
+
+    # Gráfico de barras con Altair (cuenta por categoría)
+    chart_pay = (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "payment_type:N",
+                title="payment_type",
+                sort=alt.SortField("payment_type", order="ascending"),
+            ),
+            y=alt.Y("count()", title="Número de viajes"),
+        )
+        .properties(
+            height=350,
+            title="Distribución de tipos de pago"
+        )
+    )
+
+    st.altair_chart(chart_pay, use_container_width=True)
+else:
+    st.info("El archivo no contiene la columna 'payment_type'.")
+
 # ===============================================
 #  Sección: Media de trip_total destacada
 # ===============================================
