@@ -5,7 +5,7 @@ import altair as alt
 from utils.gcs_loader import list_gcs_blobs, load_gcs_blob
 import pydeck as pdk
 
-st.title("Analítica Descriptiva desde GCS (Chicago)")
+st.title("Analítica Descriptiva desde GCS (Chicago Taxi)")
 
 # --------------------------------------------
 # Parámetros de conexión
@@ -102,7 +102,7 @@ else:
 st.subheader("Distribución de trip_miles (p99)")
 
 if "trip_miles" in df.columns:
-    # Asegurar tipo numérico (por si acaso)
+    # Asegurar tipo numérico 
     df["trip_miles"] = pd.to_numeric(df["trip_miles"], errors="coerce")
     series_miles = df["trip_miles"]
 
@@ -152,7 +152,7 @@ if "payment_type" in df.columns:
     s = s.fillna("UNKNOWN")
     s = s.replace({"": "UNKNOWN"})
 
-    # 2) Normalizar algunas variantes comunes (opcional, ajusta a tu gusto)
+    # 2) Normalizar algunas variantes comunes 
     #    Primero pasamos todo a minúsculas para mapear:
     s_lower = s.str.lower()
 
@@ -211,8 +211,8 @@ if "payment_type" in df.columns:
 
     st.altair_chart(chart_pay, use_container_width=True)
 
-    # (Opcional) Mostrar tabla resumen debajo
-    st.caption("Tabla resumen de tipos de pago")
+    # 
+    st.caption("Tipos de pago")
     st.dataframe(df_pay.sort_values("percent", ascending=False), use_container_width=True)
 
 else:
@@ -221,7 +221,7 @@ else:
 # ---------------------------------------------------------
 # Mapa PyDeck: rutas alrededor de la media de trip_total
 # ---------------------------------------------------------
-st.subheader("Rutas alrededor de la media de trip_total (PyDeck)")
+st.subheader("Rutas alrededor de la media de trip_total")
 
 cols_needed = [
     "trip_total",
