@@ -144,7 +144,7 @@ else:
 # --------------------------------------------
 # Distribución de payment_type (porcentajes)
 # --------------------------------------------
-st.subheader("Distribución de tipos de pago")
+st.subheader("Distribución de tipos de pago %")
 
 if "payment_type" in df.columns:
     # 1) Limpiar: a string, quitar espacios, NaN -> 'UNKNOWN'
@@ -205,7 +205,7 @@ if "payment_type" in df.columns:
         )
         .properties(
             height=350,
-            title="Distribución de tipos de pago (porcentaje)"
+            #title="Distribución de tipos de pago (porcentaje)"
         )
     )
 
