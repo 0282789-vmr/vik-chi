@@ -141,81 +141,82 @@ if "trip_miles" in df.columns:
         st.altair_chart(chart_miles, use_container_width=True)
 else:
     st.info("El archivo no contiene 'trip_miles'.")
-
 # --------------------------------------------
-# Distribución de payment_type
+# Distribución de payment_type (porcentajes)
 # --------------------------------------------
 st.subheader("Distribución de tipos de pago")
 
 if "payment_type" in df.columns:
-    # Rellenar vacíos como "UNKNOWN" y convertir a string
-    df["payment_type"] = df["payment_type"].astype(str)
-    df["payment_type"] = df["payment_type"].replace(
-        {"nan": "UNKNOWN", "": "UNKNOWN"}
-    )
+    # 1) Limpiar: a string, quitar espacios, NaN -> 'UNKNOWN'
+    s = df["payment_type"].astype("string").str.strip()
+    s = s.fillna("UNKNOWN")
+    s = s.replace({"": "UNKNOWN"})
 
-    # Gráfico de barras con Altair (cuenta por categoría)
+    # 2) Normalizar algunas variantes comunes (opcional, ajusta a tu gusto)
+    #    Primero pasamos todo a minúsculas para mapear:
+    s_lower = s.str.lower()
+
+    mapping = {
+        "cash": "Cash",
+        "efectivo": "Cash",          # por si hubiera
+        "credit card": "Credit Card",
+        "creditcard": "Credit Card",
+        "tarjeta": "Credit Card",    # por si hubiera
+        "prcard": "Prepaid Card",
+        "precard": "Prepaid Card",
+        "mobile": "Mobile",
+        "unknown": "UNKNOWN",
+    }
+
+    # Aplicar mapping manteniendo el valor original cuando no esté en el diccionario
+    s_norm = s_lower.map(mapping).fillna(s)
+
+    # 3) Agrupar: una fila por categoría
+    df_pay = (
+        s_norm.value_counts(dropna=False)
+        .reset_index()
+    )
+    df_pay.columns = ["payment_type", "count"]
+
+    # 4) Calcular porcentaje
+    total = df_pay["count"].sum()
+    df_pay["percent"] = df_pay["count"] / total * 100
+
+    # 5) Gráfico de barras por porcentaje
     chart_pay = (
-        alt.Chart(df)
+        alt.Chart(df_pay)
         .mark_bar()
         .encode(
             x=alt.X(
                 "payment_type:N",
-                title="payment_type",
-                sort=alt.SortField("payment_type", order="ascending"),
+                title="Tipo de pago",
+                sort="-y",  # ordenar de mayor a menor porcentaje
             ),
-            y=alt.Y("count()", title="Número de viajes"),
+            y=alt.Y(
+                "percent:Q",
+                title="Porcentaje de viajes",
+                axis=alt.Axis(format=".1f")
+            ),
+            tooltip=[
+                alt.Tooltip("payment_type:N", title="Tipo de pago"),
+                alt.Tooltip("percent:Q", title="Porcentaje", format=".2f"),
+                alt.Tooltip("count:Q", title="Número de viajes"),
+            ],
         )
         .properties(
             height=350,
-            title="Distribución de tipos de pago"
+            title="Distribución de tipos de pago (porcentaje)"
         )
     )
 
     st.altair_chart(chart_pay, use_container_width=True)
+
+    # (Opcional) Mostrar tabla resumen debajo
+    st.caption("Tabla resumen de tipos de pago")
+    st.dataframe(df_pay.sort_values("percent", ascending=False), use_container_width=True)
+
 else:
     st.info("El archivo no contiene la columna 'payment_type'.")
-
-# ===============================================
-#  Sección: Media de trip_total destacada
-# ===============================================
-st.subheader("Promedio de tarifa (trip_total)")
-
-# Aseguramos que sea numérico
-df["trip_total"] = pd.to_numeric(df["trip_total"], errors="coerce")
-
-# Calculamos la media ignorando valores faltantes
-media_trip = df["trip_total"].mean()
-
-# Tarjeta visual de estilo destacado
-st.markdown(
-    f"""
-    <div style="
-        background-color:#f5f7ff;
-        padding:1.5rem 2rem;
-        border-radius:16px;
-        border:1px solid #e2e6f3;
-        margin-bottom:1.5rem;
-        width:100%;
-    ">
-        <p style="margin:0; font-size:15px; color:#333;">
-            El valor promedio de <strong>trip_total</strong> es:
-        </p>
-        <p style="
-            margin:0.2rem 0 0.4rem 0;
-            font-size:48px;
-            font-weight:700;
-            color:#0b7a29;
-        ">
-            ${media_trip:,.2f}
-        </p>
-        <p style="margin:0; font-size:13px; color:#555;">
-            Calculado con los registros del archivo seleccionado.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 # ---------------------------------------------------------
 # Mapa PyDeck: rutas alrededor de la media de trip_total
