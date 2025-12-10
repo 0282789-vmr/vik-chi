@@ -315,3 +315,87 @@ else:
         "'trip_total', 'pickup_latitude', 'pickup_longitude', "
         "'dropoff_latitude', 'dropoff_longitude'."
     )
+
+# =====================================================
+# MATRIZ DE CORRELACIÓN (predictores vs trip_total)
+# =====================================================
+st.subheader("Matriz de correlación (Predictores vs trip_total)")
+
+# 1) Asegurar que las columnas numéricas sean realmente numéricas
+for col in [
+    "trip_total",
+    "trip_seconds",
+    "trip_miles",
+    "pickup_community_area",
+    "dropoff_community_area",
+]:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+# 2) Reconstruir features temporales si existe el timestamp
+if "trip_start_timestamp" in df.columns:
+    df["trip_start_timestamp"] = pd.to_datetime(
+        df["trip_start_timestamp"], errors="coerce"
+    )
+    df["hour"] = df["trip_start_timestamp"].dt.hour
+    df["day"] = df["trip_start_timestamp"].dt.day
+    df["month"] = df["trip_start_timestamp"].dt.month
+    df["weekday"] = df["trip_start_timestamp"].dt.weekday
+
+# 3) Armar la lista de columnas para la correlación
+cols_corr = [
+    "trip_total",
+    "trip_seconds",
+    "trip_miles",
+    "pickup_community_area",
+    "dropoff_community_area",
+    "hour",
+    "day",
+    "month",
+    "weekday",
+]
+
+# Nos quedamos solo con las columnas que realmente existen en el df
+cols_corr = [c for c in cols_corr if c in df.columns]
+
+if len(cols_corr) < 2:
+    st.info("No hay suficientes variables numéricas para calcular la correlación.")
+else:
+    # 4) Construir dataframe numérico y eliminar filas con NaN
+    df_corr = df[cols_corr].dropna().copy()
+
+    if df_corr.empty:
+        st.warning("No hay datos suficientes (tras limpiar NaN) para la correlación.")
+    else:
+        # 5) Calcular matriz de correlación
+        corr_matrix = df_corr.corr()
+
+        # 6) Pasar a formato largo para Altair
+        corr_long = corr_matrix.reset_index().melt("index")
+        corr_long.columns = ["var1", "var2", "corr"]
+
+        # 7) Graficar heatmap con Altair
+        heatmap = (
+            alt.Chart(corr_long)
+            .mark_rect()
+            .encode(
+                x=alt.X("var1:N", title="Variable"),
+                y=alt.Y("var2:N", title="Variable"),
+                color=alt.Color(
+                    "corr:Q",
+                    scale=alt.Scale(scheme="redblue"),
+                ),
+                tooltip=[
+                    alt.Tooltip("var1:N", title="Variable 1"),
+                    alt.Tooltip("var2:N", title="Variable 2"),
+                    alt.Tooltip("corr:Q", title="Correlación", format=".2f"),
+                ],
+            )
+            .properties(
+                title="Matriz de correlación entre predictores y trip_total",
+                height=450,
+            )
+        )
+
+        st.altair_chart(heatmap, use_container_width=True)
+
