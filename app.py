@@ -1,28 +1,29 @@
 import streamlit as st
 
 st.set_page_config(
-    page_title="Dashboard en la Nube – Cloud Run",
+    page_title="Chicago Taxi Dashboard",
     layout="wide"
 )
 
-st.title("Dashboard – Analítica Descriptiva")
+st.title("Chicago Taxi Dashboard")
 
 st.markdown("""
-Bienvenido al dashboard en la nube desplegado con **Cloud Run**.
+Chicago Taxi Dashboard.
 
-Este sistema permite:
+Esta aplicación permite:
 
 ### Analizar datasets grandes alojados en Google Cloud Storage
 - Cargar archivos CSV desde un bucket.
 - Navegar archivo por archivo.
-- Visualizar histogramas, patrones horarios y matrices de correlación usando **Altair**.
+- Visualizar histogramas, tablas, mapas **Altair**.
+- Modelo de regresión lineal incremental con River
 
 ---
 
 Usa el menú lateral para acceder a la sección:
 
-**Analitica_Descriptiva**
-**Modelo_Incremental_Chicago**
+- Analitica_Descriptiva
+- Modelo_Incremental_Chicago
 
 ---
 """)
